@@ -1,0 +1,185 @@
+# Glance Configuration - Demo Implementation
+# This configuration demonstrates various widget types and features
+
+server:
+  host: 0.0.0.0
+  port: 8080
+
+# Theme configuration
+theme:
+  light: true
+  background-color: 240 13 20
+  primary-color: 43 100 50
+  contrast-multiplier: 1.0
+
+# Branding
+branding:
+  app-name: Glance Dashboard
+  logo-text: Glance
+
+# Pages configuration
+pages:
+  - name: Home
+    slug: home
+    columns:
+      # Left sidebar - small widgets
+      - size: small
+        widgets:
+          # Clock widget
+          - type: clock
+            hour-format: 24h
+            timezones:
+              - timezone: UTC
+                label: UTC
+              - timezone: America/New_York
+                label: New York
+
+          # Calendar widget
+          - type: calendar
+            first-day-of-week: monday
+
+          # Bookmarks widget
+          - type: bookmarks
+            groups:
+              - title: Development
+                color: 10 70 50
+                links:
+                  - title: GitHub
+                    url: https://github.com
+                  - title: Stack Overflow
+                    url: https://stackoverflow.com
+                  - title: MDN Web Docs
+                    url: https://developer.mozilla.org
+
+              - title: Self-Hosting
+                color: 200 70 50
+                links:
+                  - title: Docker Hub
+                    url: https://hub.docker.com
+                  - title: Portainer
+                    url: https://portainer.io
+                  - title: Proxmox
+                    url: https://proxmox.com
+
+      # Main content - full width widgets
+      - size: full
+        widgets:
+          # RSS Feed aggregator
+          - type: rss
+            title: Tech News
+            limit: 15
+            collapse-after: 5
+            cache: 30m
+            feeds:
+              - url: https://hnrss.org/frontpage
+                title: Hacker News
+              - url: https://www.reddit.com/r/selfhosted/.rss
+                title: r/selfhosted
+              - url: https://blog.golang.org/feed.atom
+                title: Go Blog
+
+          # Hacker News widget
+          - type: hacker-news
+            limit: 10
+            collapse-after: 5
+
+          # Group widget with multiple Reddit feeds
+          - type: group
+            widgets:
+              - type: reddit
+                subreddit: technology
+                limit: 10
+                collapse-after: 5
+
+              - type: reddit
+                subreddit: programming
+                limit: 10
+                collapse-after: 5
+
+      # Right sidebar - small widgets
+      - size: small
+        widgets:
+          # Server stats (if available)
+          - type: server-stats
+            cache: 5m
+
+          # Monitor websites
+          - type: monitor
+            cache: 1m
+            sites:
+              - title: GitHub
+                url: https://github.com
+                icon: simple-icons:github
+
+              - title: Google
+                url: https://google.com
+                icon: simple-icons:google
+
+          # Markets widget
+          - type: markets
+            cache: 5m
+            markets:
+              - symbol: SPY
+                name: S&P 500
+              - symbol: BTC-USD
+                name: Bitcoin
+              - symbol: ETH-USD
+                name: Ethereum
+
+  # Second page - Development focused
+  - name: Development
+    slug: dev
+    columns:
+      - size: full
+        widgets:
+          # GitHub releases
+          - type: releases
+            title: Latest Releases
+            cache: 1h
+            repositories:
+              - glanceapp/glance
+              - golang/go
+              - docker/compose
+
+          # Repository stats
+          - type: repository
+            repositories:
+              - glanceapp/glance
+              - golang/go
+
+  # Third page - Custom widgets
+  - name: Custom
+    slug: custom
+    columns:
+      - size: full
+        widgets:
+          # HTML widget
+          - type: html
+            title: Welcome
+            content: |
+              <div style="padding: 20px; text-align: center;">
+                <h2>Welcome to Glance!</h2>
+                <p>This is a demo implementation showcasing various widget types.</p>
+                <p>Navigate between pages using the tabs above.</p>
+              </div>
+
+          # Search widget
+          - type: search
+            autofocus: true
+            search-engine: duckduckgo
+            bangs:
+              - title: GitHub
+                shortcut: g
+                url: https://github.com/search?q={QUERY}
+
+              - title: Stack Overflow
+                shortcut: so
+                url: https://stackoverflow.com/search?q={QUERY}
+
+              - title: Reddit
+                shortcut: r
+                url: https://reddit.com/search?q={QUERY}
+
+          # To-do widget
+          - type: to-do
+            title: My Tasks

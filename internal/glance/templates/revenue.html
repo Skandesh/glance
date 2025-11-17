@@ -57,6 +57,21 @@
         {{- end }}
     </div>
 
+    <!-- Trend Chart -->
+    {{- if and .TrendLabels .TrendValues }}
+    <div class="chart-container margin-top-10">
+        <canvas id="revenue-trend-chart"
+                class="chart-canvas"
+                width="600"
+                height="200"
+                data-chart-type="trend"
+                data-labels='{{ toJSON .TrendLabels }}'
+                data-values='{{ toJSON .TrendValues }}'
+                data-color="#10b981">
+        </canvas>
+    </div>
+    {{- end }}
+
     {{- else }}
     <div class="widget-notice">
         <p class="size-h4">No Revenue Data</p>

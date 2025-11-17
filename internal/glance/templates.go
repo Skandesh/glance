@@ -1,6 +1,7 @@
 package glance
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"math"
@@ -35,6 +36,10 @@ var globalTemplateFunctions = template.FuncMap{
 	},
 	"formatPriceWithPrecision": func(precision int, price float64) string {
 		return intl.Sprintf("%."+strconv.Itoa(precision)+"f", price)
+	},
+	"toJSON": func(v interface{}) template.JS {
+		b, _ := json.Marshal(v)
+		return template.JS(b)
 	},
 	"dynamicRelativeTimeAttrs": dynamicRelativeTimeAttrs,
 	"formatServerMegabytes": func(mb uint64) template.HTML {

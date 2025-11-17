@@ -1,0 +1,181 @@
+/* BusinessGlance - Business Theme CSS */
+/* Professional styling for business metrics dashboards */
+
+/* ============================================
+   Business Metric Widgets
+   ============================================ */
+
+.business-metric-widget {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 0.5rem 0;
+}
+
+/* Primary Metric Display */
+.metric-primary {
+    text-align: center;
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--color-separator);
+}
+
+.metric-value {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--color-highlight);
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+}
+
+.metric-label {
+    font-size: 0.875rem;
+    color: var(--color-text-base);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 0.25rem;
+}
+
+/* Trend Indicator */
+.metric-trend {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+}
+
+.trend-indicator {
+    font-size: 1.25rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.trend-positive {
+    color: var(--color-positive);
+}
+
+.trend-negative {
+    color: var(--color-negative);
+}
+
+.trend-label {
+    font-size: 0.875rem;
+    color: var(--color-text-base);
+}
+
+/* Metrics Grid */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 1rem;
+}
+
+.metric-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.75rem;
+    background: var(--color-widget-background-highlight);
+    border-radius: 0.375rem;
+    border: 1px solid var(--color-separator);
+}
+
+.metric-item-label {
+    font-size: 0.75rem;
+    color: var(--color-text-base);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.metric-item-value {
+    font-size: 1.125rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Chart Container */
+.chart-container {
+    margin-top: 1rem;
+    padding: 1rem 0;
+}
+
+.chart-canvas {
+    width: 100%;
+    height: 200px;
+}
+
+/* Widget Notice */
+.widget-notice {
+    text-align: center;
+    padding: 2rem 1rem;
+}
+
+.widget-notice p {
+    margin: 0.5rem 0;
+}
+
+/* ============================================
+   Business Widget Specific Styles
+   ============================================ */
+
+/* Revenue Widget */
+.widget-type-revenue .metric-value {
+    color: var(--color-positive);
+}
+
+/* Customers Widget */
+.widget-type-customers .metric-primary {
+    border-bottom-color: var(--color-primary);
+}
+
+/* ============================================
+   Responsive Design
+   ============================================ */
+
+@media (max-width: 640px) {
+    .metric-value {
+        font-size: 2rem;
+    }
+
+    .metrics-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .chart-canvas {
+        height: 150px;
+    }
+}
+
+/* ============================================
+   Dark Mode Adjustments
+   ============================================ */
+
+[data-scheme="dark"] .metric-item {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+[data-scheme="dark"] .trend-positive {
+    color: #10b981;
+}
+
+[data-scheme="dark"] .trend-negative {
+    color: #ef4444;
+}
+
+/* ============================================
+   Print Styles
+   ============================================ */
+
+@media print {
+    .business-metric-widget {
+        page-break-inside: avoid;
+    }
+
+    .metric-value {
+        color: #000;
+    }
+
+    .trend-indicator {
+        color: #000;
+    }
+}

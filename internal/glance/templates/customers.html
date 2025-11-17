@@ -80,6 +80,21 @@
     </div>
     {{- end }}
 
+    <!-- Trend Chart -->
+    {{- if and .TrendLabels .TrendValues }}
+    <div class="chart-container margin-top-10">
+        <canvas id="customers-trend-chart"
+                class="chart-canvas"
+                width="600"
+                height="200"
+                data-chart-type="trend"
+                data-labels='{{ toJSON .TrendLabels }}'
+                data-values='{{ toJSON .TrendValues }}'
+                data-color="#3b82f6">
+        </canvas>
+    </div>
+    {{- end }}
+
     {{- else }}
     <div class="widget-notice">
         <p class="size-h4">No Customer Data</p>

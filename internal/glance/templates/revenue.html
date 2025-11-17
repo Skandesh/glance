@@ -1,0 +1,67 @@
+{{ template "widget-base.html" . }}
+
+{{- define "widget-content" }}
+<div class="business-metric-widget">
+    {{- if .CurrentMRR }}
+    <!-- Primary Metric -->
+    <div class="metric-primary">
+        <div class="metric-value">${{ formatPrice .CurrentMRR }}</div>
+        <div class="metric-label">Current MRR</div>
+    </div>
+
+    <!-- Growth Indicator -->
+    {{- if ne .GrowthRate 0.0 }}
+    <div class="metric-trend">
+        <span class="trend-indicator {{ if gt .GrowthRate 0 }}trend-positive{{ else }}trend-negative{{ end }}">
+            {{ if gt .GrowthRate 0 }}↑{{ else }}↓{{ end }}
+            {{ formatPrice (absFloat .GrowthRate) }}%
+        </span>
+        <span class="trend-label">vs last month</span>
+    </div>
+    {{- end }}
+
+    <!-- Secondary Metrics -->
+    <div class="metrics-grid margin-top-10">
+        <div class="metric-item">
+            <div class="metric-item-label size-h5">ARR</div>
+            <div class="metric-item-value color-highlight text-very-compact">
+                ${{ formatPrice .ARR }}
+            </div>
+        </div>
+
+        {{- if gt .NewMRR 0 }}
+        <div class="metric-item">
+            <div class="metric-item-label size-h5">NEW MRR</div>
+            <div class="metric-item-value color-positive text-very-compact">
+                +${{ formatPrice .NewMRR }}
+            </div>
+        </div>
+        {{- end }}
+
+        {{- if gt .ChurnedMRR 0 }}
+        <div class="metric-item">
+            <div class="metric-item-label size-h5">CHURNED</div>
+            <div class="metric-item-value color-negative text-very-compact">
+                -${{ formatPrice .ChurnedMRR }}
+            </div>
+        </div>
+        {{- end }}
+
+        {{- if ne .NetNewMRR 0 }}
+        <div class="metric-item">
+            <div class="metric-item-label size-h5">NET NEW</div>
+            <div class="metric-item-value {{ if gt .NetNewMRR 0 }}color-positive{{ else }}color-negative{{ end }} text-very-compact">
+                {{ if gt .NetNewMRR 0 }}+{{ end }}${{ formatPrice .NetNewMRR }}
+            </div>
+        </div>
+        {{- end }}
+    </div>
+
+    {{- else }}
+    <div class="widget-notice">
+        <p class="size-h4">No Revenue Data</p>
+        <p class="color-paragraph">No active subscriptions found. Make sure your Stripe API key is correct and you have active subscriptions.</p>
+    </div>
+    {{- end }}
+</div>
+{{- end }}

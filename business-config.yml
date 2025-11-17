@@ -1,0 +1,129 @@
+# BusinessGlance - Sample Business Dashboard Configuration
+# For SaaS Startups, Digital Agencies, and SMBs
+
+server:
+  host: 0.0.0.0
+  port: 8080
+
+# Theme configuration - Business professional
+theme:
+  light: true
+  background-color: 240 13 20
+  primary-color: 43 100 50
+  contrast-multiplier: 1.0
+
+# Branding
+branding:
+  app-name: BusinessGlance
+  logo-text: BG
+
+# Pages configuration
+pages:
+  - name: Revenue & Customers
+    slug: home
+    columns:
+      # Left column - Revenue metrics
+      - size: small
+        widgets:
+          # Revenue Widget (Stripe integration)
+          - type: revenue
+            title: Monthly Recurring Revenue
+            stripe-api-key: ${STRIPE_SECRET_KEY}
+            stripe-mode: test  # Change to 'live' for production
+            cache: 1h
+
+          # Customer Metrics Widget (Stripe integration)
+          - type: customers
+            title: Customer Health
+            stripe-api-key: ${STRIPE_SECRET_KEY}
+            stripe-mode: test
+            cache: 1h
+
+      # Middle column - Operations
+      - size: full
+        widgets:
+          # Uptime Monitoring
+          - type: monitor
+            title: System Uptime
+            cache: 1m
+            sites:
+              - title: API Server
+                url: https://api.example.com
+                icon: simple-icons:fastapi
+
+              - title: Web App
+                url: https://app.example.com
+                icon: simple-icons:react
+
+              - title: Marketing Site
+                url: https://example.com
+                icon: simple-icons:html5
+
+          # Server Stats
+          - type: server-stats
+            title: Infrastructure
+            cache: 5m
+
+      # Right column - Development & News
+      - size: small
+        widgets:
+          # GitHub Releases
+          - type: releases
+            title: Latest Releases
+            cache: 1h
+            repositories:
+              - glanceapp/glance
+              - stripe/stripe-go
+              - golang/go
+
+          # Tech News
+          - type: hacker-news
+            limit: 10
+            collapse-after: 5
+
+  - name: Development
+    slug: dev
+    columns:
+      - size: full
+        widgets:
+          # GitHub Activity
+          - type: repository
+            repositories:
+              - glanceapp/glance
+              - your-org/your-repo
+
+          # Docker Containers (if running)
+          - type: docker-containers
+            title: Docker Services
+            cache: 1m
+
+  - name: Industry News
+    slug: news
+    columns:
+      - size: full
+        widgets:
+          # Tech RSS Feeds
+          - type: rss
+            title: Industry News
+            limit: 15
+            collapse-after: 5
+            cache: 30m
+            feeds:
+              - url: https://hnrss.org/frontpage
+                title: Hacker News
+
+              - url: https://www.reddit.com/r/saas/.rss
+                title: r/SaaS
+
+              - url: https://www.reddit.com/r/entrepreneur/.rss
+                title: r/Entrepreneur
+
+          # Hacker News
+          - type: hacker-news
+            limit: 15
+            collapse-after: 5
+
+          # Lobsters
+          - type: lobsters
+            limit: 15
+            collapse-after: 5

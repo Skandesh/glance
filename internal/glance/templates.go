@@ -27,6 +27,9 @@ var globalTemplateFunctions = template.FuncMap{
 	"absInt": func(i int) int {
 		return int(math.Abs(float64(i)))
 	},
+	"absFloat": func(f float64) float64 {
+		return math.Abs(f)
+	},
 	"formatPrice": func(price float64) string {
 		return intl.Sprintf("%.2f", price)
 	},

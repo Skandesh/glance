@@ -6,6 +6,7 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/mmcdole/gofeed v1.3.0
 	github.com/shirou/gopsutil/v4 v4.25.4
+	github.com/stripe/stripe-go/v81 v81.4.0
 	github.com/tidwall/gjson v1.18.0
 	golang.org/x/crypto v0.38.0
 	golang.org/x/text v0.25.0
@@ -23,7 +24,6 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
-	github.com/stripe/stripe-go/v81 v81.4.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tklauser/go-sysconf v0.3.15 // indirect

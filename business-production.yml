@@ -1,0 +1,121 @@
+# BusinessGlance Production Configuration
+# Complete example for production deployment
+
+server:
+  host: 0.0.0.0
+  port: 8080
+  # For production, use environment-specific ports or configure behind nginx/caddy
+
+# Production theme - professional business colors
+theme:
+  light: true
+  background-color: 240 13 20      # Subtle grey-blue
+  primary-color: 43 100 50         # Professional green
+  contrast-multiplier: 1.0
+
+# Pages configuration
+pages:
+  - name: Revenue Dashboard
+    slug: home
+    columns:
+      # Left column - Revenue metrics
+      - size: small
+        widgets:
+          - type: revenue
+            title: Monthly Recurring Revenue
+            stripe-api-key: ${STRIPE_SECRET_KEY}
+            stripe-mode: live                    # Use 'live' for production
+            cache: 1h
+
+          - type: customers
+            title: Customer Health
+            stripe-api-key: ${STRIPE_SECRET_KEY}
+            stripe-mode: live
+            cache: 1h
+
+      # Middle column - Business metrics
+      - size: small
+        widgets:
+          - type: monitor
+            title: API Uptime
+            cache: 5m
+            sites:
+              - title: Production API
+                url: https://api.yourdomain.com/health
+                icon: /assets/favicon.png
+
+              - title: Dashboard
+                url: https://app.yourdomain.com
+                icon: si:vercel
+
+              - title: Website
+                url: https://yourdomain.com
+
+          - type: server-stats
+            title: Server Resources
+            cache: 1m
+            server-stats:
+              - label: Production
+                address: yourdomain.com
+                username: monitoring
+                # Use SSH key authentication in production
+                use-ssh-key: true
+                key-path: /home/app/.ssh/id_ed25519
+
+      # Right column - Custom integrations
+      - size: small
+        widgets:
+          - type: custom-api
+            title: Analytics
+            url: https://plausible.io/api/v1/stats/aggregate
+            method: GET
+            cache: 30m
+            headers:
+              Authorization: Bearer ${PLAUSIBLE_API_KEY}
+            parameters:
+              site_id: yourdomain.com
+              period: 30d
+              metrics: visitors,pageviews,bounce_rate
+            response:
+              json:
+                results:
+                  visitors: $.results.visitors.value
+                  pageviews: $.results.pageviews.value
+                  bounce_rate: $.results.bounce_rate.value
+
+          - type: calendar
+            title: Team Calendar
+            cache: 15m
+            calendars:
+              - url: https://calendar.google.com/calendar/ical/team@yourdomain.com/public/basic.ics
+                name: Team Events
+
+  # Operations page
+  - name: Operations
+    slug: ops
+    columns:
+      - size: full
+        widgets:
+          - type: monitor
+            title: System Status
+            cache: 1m
+            sites:
+              - title: Database
+                url: postgresql://db.yourdomain.com:5432
+                allow-insecure: false
+
+              - title: Redis Cache
+                url: redis://cache.yourdomain.com:6379
+
+              - title: CDN
+                url: https://cdn.yourdomain.com/healthcheck
+
+          - type: rss
+            title: Security Advisories
+            cache: 1h
+            feeds:
+              - url: https://github.com/advisories.atom
+                title: GitHub Security
+
+              - url: https://stripe.com/blog/feed
+                title: Stripe Updates

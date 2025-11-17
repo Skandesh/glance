@@ -55,18 +55,51 @@ func (w *customersWidget) initialize() error {
 }
 
 func (w *customersWidget) update(ctx context.Context) {
-	// Set Stripe API key
-	stripe.Key = w.StripeAPIKey
+	// Get decrypted API key
+	encService, err := GetEncryptionService()
+	if err != nil {
+		w.withError(fmt.Errorf("encryption service unavailable: %w", err))
+		return
+	}
 
-	// Get total customers
-	totalCustomers, err := w.getTotalCustomers(ctx)
+	apiKey, err := encService.DecryptIfNeeded(w.StripeAPIKey)
+	if err != nil {
+		w.withError(fmt.Errorf("failed to decrypt API key: %w", err))
+		return
+	}
+
+	// Get Stripe client with resilience
+	pool := GetStripeClientPool()
+	client, err := pool.GetClient(apiKey, w.StripeMode)
+	if err != nil {
+		w.withError(fmt.Errorf("failed to get Stripe client: %w", err))
+		return
+	}
+
+	// Set Stripe API key for direct API calls
+	stripe.Key = apiKey
+
+	// Try to load from database first for trend data
+	db, dbErr := GetMetricsDatabase("")
+	if dbErr == nil {
+		// Get historical data from database
+		endTime := time.Now()
+		startTime := endTime.AddDate(0, -6, 0) // Last 6 months
+		history, err := db.GetCustomerHistory(ctx, w.StripeMode, startTime, endTime)
+		if err == nil && len(history) > 0 {
+			w.loadHistoricalData(history)
+		}
+	}
+
+	// Get total customers with retry
+	totalCustomers, err := w.getTotalCustomersWithRetry(ctx, client)
 	if !w.canContinueUpdateAfterHandlingErr(err) {
 		return
 	}
 	w.TotalCustomers = totalCustomers
 
 	// Get active customers (with active subscriptions)
-	activeCustomers, err := w.getActiveCustomers(ctx)
+	activeCustomers, err := w.getActiveCustomersWithRetry(ctx, client)
 	if err != nil {
 		slog.Error("Failed to get active customers", "error", err)
 	} else {
@@ -74,7 +107,7 @@ func (w *customersWidget) update(ctx context.Context) {
 	}
 
 	// Get new customers this month
-	newCustomers, err := w.getNewCustomers(ctx)
+	newCustomers, err := w.getNewCustomersWithRetry(ctx, client)
 	if err != nil {
 		slog.Error("Failed to get new customers", "error", err)
 	} else {
@@ -82,7 +115,7 @@ func (w *customersWidget) update(ctx context.Context) {
 	}
 
 	// Get churned customers this month
-	churnedCustomers, err := w.getChurnedCustomers(ctx)
+	churnedCustomers, err := w.getChurnedCustomersWithRetry(ctx, client)
 	if err != nil {
 		slog.Error("Failed to get churned customers", "error", err)
 	} else {
@@ -120,6 +153,23 @@ func (w *customersWidget) update(ctx context.Context) {
 
 	// Generate trend data
 	w.generateTrendData()
+
+	// Save to database for historical tracking
+	if dbErr == nil {
+		snapshot := &CustomerSnapshot{
+			Timestamp:        time.Now(),
+			TotalCustomers:   w.TotalCustomers,
+			NewCustomers:     w.NewCustomers,
+			ChurnedCustomers: w.ChurnedCustomers,
+			ChurnRate:        w.ChurnRate,
+			ActiveCustomers:  w.ActiveCustomers,
+			Mode:             w.StripeMode,
+		}
+
+		if err := db.SaveCustomerSnapshot(ctx, snapshot); err != nil {
+			slog.Error("Failed to save customer snapshot", "error", err)
+		}
+	}
 }
 
 func (w *customersWidget) getTotalCustomers(ctx context.Context) (int, error) {
@@ -249,4 +299,71 @@ func (w *customersWidget) generateTrendData() {
 
 func (w *customersWidget) Render() template.HTML {
 	return w.renderTemplate(w, customersWidgetTemplate)
+}
+
+// getTotalCustomersWithRetry wraps getTotalCustomers with circuit breaker and retry logic
+func (w *customersWidget) getTotalCustomersWithRetry(ctx context.Context, client *StripeClientWrapper) (int, error) {
+	var result int
+	err := client.ExecuteWithRetry(ctx, "getTotalCustomers", func() error {
+		count, err := w.getTotalCustomers(ctx)
+		result = count
+		return err
+	})
+	return result, err
+}
+
+// getActiveCustomersWithRetry wraps getActiveCustomers with circuit breaker and retry logic
+func (w *customersWidget) getActiveCustomersWithRetry(ctx context.Context, client *StripeClientWrapper) (int, error) {
+	var result int
+	err := client.ExecuteWithRetry(ctx, "getActiveCustomers", func() error {
+		count, err := w.getActiveCustomers(ctx)
+		result = count
+		return err
+	})
+	return result, err
+}
+
+// getNewCustomersWithRetry wraps getNewCustomers with circuit breaker and retry logic
+func (w *customersWidget) getNewCustomersWithRetry(ctx context.Context, client *StripeClientWrapper) (int, error) {
+	var result int
+	err := client.ExecuteWithRetry(ctx, "getNewCustomers", func() error {
+		count, err := w.getNewCustomers(ctx)
+		result = count
+		return err
+	})
+	return result, err
+}
+
+// getChurnedCustomersWithRetry wraps getChurnedCustomers with circuit breaker and retry logic
+func (w *customersWidget) getChurnedCustomersWithRetry(ctx context.Context, client *StripeClientWrapper) (int, error) {
+	var result int
+	err := client.ExecuteWithRetry(ctx, "getChurnedCustomers", func() error {
+		count, err := w.getChurnedCustomers(ctx)
+		result = count
+		return err
+	})
+	return result, err
+}
+
+// loadHistoricalData loads historical data from database snapshots
+func (w *customersWidget) loadHistoricalData(history []*CustomerSnapshot) {
+	if len(history) == 0 {
+		return
+	}
+
+	// Use database data to populate trend chart
+	maxPoints := 6
+	if len(history) > maxPoints {
+		history = history[:maxPoints]
+	}
+
+	w.TrendLabels = make([]string, len(history))
+	w.TrendValues = make([]int, len(history))
+
+	// Reverse chronological order (oldest first for chart)
+	for i := range history {
+		idx := len(history) - 1 - i
+		w.TrendLabels[i] = history[idx].Timestamp.Format("Jan")
+		w.TrendValues[i] = history[idx].TotalCustomers
+	}
 }

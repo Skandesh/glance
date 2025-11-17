@@ -56,11 +56,44 @@ func (w *revenueWidget) initialize() error {
 }
 
 func (w *revenueWidget) update(ctx context.Context) {
-	// Set Stripe API key
-	stripe.Key = w.StripeAPIKey
+	// Get decrypted API key
+	encService, err := GetEncryptionService()
+	if err != nil {
+		w.withError(fmt.Errorf("encryption service unavailable: %w", err))
+		return
+	}
 
-	// Calculate current MRR
-	currentMRR, err := w.calculateMRR(ctx)
+	apiKey, err := encService.DecryptIfNeeded(w.StripeAPIKey)
+	if err != nil {
+		w.withError(fmt.Errorf("failed to decrypt API key: %w", err))
+		return
+	}
+
+	// Get Stripe client with resilience
+	pool := GetStripeClientPool()
+	client, err := pool.GetClient(apiKey, w.StripeMode)
+	if err != nil {
+		w.withError(fmt.Errorf("failed to get Stripe client: %w", err))
+		return
+	}
+
+	// Set Stripe API key for direct API calls
+	stripe.Key = apiKey
+
+	// Try to load from database first for trend data
+	db, dbErr := GetMetricsDatabase("")
+	if dbErr == nil {
+		// Get historical data from database
+		endTime := time.Now()
+		startTime := endTime.AddDate(0, -6, 0) // Last 6 months
+		history, err := db.GetRevenueHistory(ctx, w.StripeMode, startTime, endTime)
+		if err == nil && len(history) > 0 {
+			w.loadHistoricalData(history)
+		}
+	}
+
+	// Calculate current MRR with resilience
+	currentMRR, err := w.calculateMRRWithRetry(ctx, client)
 	if !w.canContinueUpdateAfterHandlingErr(err) {
 		return
 	}
@@ -68,14 +101,22 @@ func (w *revenueWidget) update(ctx context.Context) {
 	w.CurrentMRR = currentMRR
 	w.ARR = currentMRR * 12
 
-	// For MVP, we'll calculate growth by comparing to stored previous value
-	// In production, you'd query historical data from Stripe or a database
-	if w.PreviousMRR > 0 {
+	// Calculate growth rate from database if available
+	if dbErr == nil {
+		prevSnapshot, err := db.GetLatestRevenue(ctx, w.StripeMode)
+		if err == nil && prevSnapshot != nil {
+			w.PreviousMRR = prevSnapshot.MRR
+			if w.PreviousMRR > 0 {
+				w.GrowthRate = ((w.CurrentMRR - w.PreviousMRR) / w.PreviousMRR) * 100
+			}
+		}
+	} else if w.PreviousMRR > 0 {
+		// Fallback to in-memory previous value
 		w.GrowthRate = ((w.CurrentMRR - w.PreviousMRR) / w.PreviousMRR) * 100
 	}
 
 	// Calculate new MRR (subscriptions created this month)
-	newMRR, err := w.calculateNewMRR(ctx)
+	newMRR, err := w.calculateNewMRRWithRetry(ctx, client)
 	if err != nil {
 		slog.Error("Failed to calculate new MRR", "error", err)
 	} else {
@@ -83,7 +124,7 @@ func (w *revenueWidget) update(ctx context.Context) {
 	}
 
 	// Calculate churned MRR (subscriptions canceled this month)
-	churnedMRR, err := w.calculateChurnedMRR(ctx)
+	churnedMRR, err := w.calculateChurnedMRRWithRetry(ctx, client)
 	if err != nil {
 		slog.Error("Failed to calculate churned MRR", "error", err)
 	} else {
@@ -92,11 +133,27 @@ func (w *revenueWidget) update(ctx context.Context) {
 
 	w.NetNewMRR = w.NewMRR - w.ChurnedMRR
 
-	// Generate trend data (last 6 months for MVP)
-	// In production, you'd store historical data
+	// Generate trend data (last 6 months)
 	w.generateTrendData()
 
-	// Store current MRR for next iteration
+	// Save to database for historical tracking
+	if dbErr == nil {
+		snapshot := &RevenueSnapshot{
+			Timestamp:  time.Now(),
+			MRR:        w.CurrentMRR,
+			ARR:        w.ARR,
+			GrowthRate: w.GrowthRate,
+			NewMRR:     w.NewMRR,
+			ChurnedMRR: w.ChurnedMRR,
+			Mode:       w.StripeMode,
+		}
+
+		if err := db.SaveRevenueSnapshot(ctx, snapshot); err != nil {
+			slog.Error("Failed to save revenue snapshot", "error", err)
+		}
+	}
+
+	// Store current MRR for next iteration (fallback)
 	w.PreviousMRR = w.CurrentMRR
 }
 
@@ -289,4 +346,60 @@ func (w *revenueWidget) generateTrendData() {
 
 func (w *revenueWidget) Render() template.HTML {
 	return w.renderTemplate(w, revenueWidgetTemplate)
+}
+
+// calculateMRRWithRetry wraps calculateMRR with circuit breaker and retry logic
+func (w *revenueWidget) calculateMRRWithRetry(ctx context.Context, client *StripeClientWrapper) (float64, error) {
+	var result float64
+	err := client.ExecuteWithRetry(ctx, "calculateMRR", func() error {
+		mrr, err := w.calculateMRR(ctx)
+		result = mrr
+		return err
+	})
+	return result, err
+}
+
+// calculateNewMRRWithRetry wraps calculateNewMRR with circuit breaker and retry logic
+func (w *revenueWidget) calculateNewMRRWithRetry(ctx context.Context, client *StripeClientWrapper) (float64, error) {
+	var result float64
+	err := client.ExecuteWithRetry(ctx, "calculateNewMRR", func() error {
+		mrr, err := w.calculateNewMRR(ctx)
+		result = mrr
+		return err
+	})
+	return result, err
+}
+
+// calculateChurnedMRRWithRetry wraps calculateChurnedMRR with circuit breaker and retry logic
+func (w *revenueWidget) calculateChurnedMRRWithRetry(ctx context.Context, client *StripeClientWrapper) (float64, error) {
+	var result float64
+	err := client.ExecuteWithRetry(ctx, "calculateChurnedMRR", func() error {
+		mrr, err := w.calculateChurnedMRR(ctx)
+		result = mrr
+		return err
+	})
+	return result, err
+}
+
+// loadHistoricalData loads historical data from database snapshots
+func (w *revenueWidget) loadHistoricalData(history []*RevenueSnapshot) {
+	if len(history) == 0 {
+		return
+	}
+
+	// Use database data to populate trend chart
+	maxPoints := 6
+	if len(history) > maxPoints {
+		history = history[:maxPoints]
+	}
+
+	w.TrendLabels = make([]string, len(history))
+	w.TrendValues = make([]float64, len(history))
+
+	// Reverse chronological order (oldest first for chart)
+	for i := range history {
+		idx := len(history) - 1 - i
+		w.TrendLabels[i] = history[idx].Timestamp.Format("Jan")
+		w.TrendValues[i] = history[idx].MRR
+	}
 }

@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -433,6 +436,28 @@ func (a *application) VersionedAssetPath(asset string) string {
 		"?v=" + strconv.FormatInt(a.CreatedAt.Unix(), 10)
 }
 
+// InvalidateCache invalidates the cache for widgets of a specific type
+// This implements the CacheInvalidator interface for webhook support
+func (a *application) InvalidateCache(widgetType string) error {
+	// Iterate through all widgets and invalidate matching types
+	for _, widget := range a.widgetByID {
+		// Check if widget type matches (using type assertion)
+		switch widgetType {
+		case "revenue":
+			if _, ok := widget.(*revenueWidget); ok {
+				widget.update(context.Background())
+				slog.Info("Invalidated revenue widget cache", "widget_type", widgetType)
+			}
+		case "customers":
+			if _, ok := widget.(*customersWidget); ok {
+				widget.update(context.Background())
+				slog.Info("Invalidated customers widget cache", "widget_type", widgetType)
+			}
+		}
+	}
+	return nil
+}
+
 func (a *application) server() (func() error, func() error) {
 	mux := http.NewServeMux()
 
@@ -446,9 +471,56 @@ func (a *application) server() (func() error, func() error) {
 	}
 
 	mux.HandleFunc("/api/widgets/{widget}/{path...}", a.handleWidgetRequest)
+
+	// Basic health check (simple 200 OK)
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+
+	// Advanced health check endpoint with detailed status
+	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
+		checker := GetHealthChecker()
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+
+		response := checker.RunChecks(ctx)
+		w.Header().Set("Content-Type", "application/json")
+
+		if response.Status == HealthStatusHealthy {
+			w.WriteHeader(http.StatusOK)
+		} else if response.Status == HealthStatusDegraded {
+			w.WriteHeader(http.StatusOK) // Still return 200 for degraded
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+
+		json.NewEncoder(w).Encode(response)
+	})
+
+	// Prometheus-compatible metrics endpoint
+	mux.HandleFunc("GET /api/metrics", MetricsHandler())
+
+	// Stripe webhook endpoint (if webhook secret is configured)
+	webhookSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
+	if webhookSecret != "" {
+		webhookHandler := GetWebhookHandler(webhookSecret, a)
+
+		mux.HandleFunc("POST /api/stripe/webhook", webhookHandler.HandleWebhook)
+
+		// Webhook events log endpoint (for debugging)
+		mux.HandleFunc("GET /api/stripe/webhook/events", func(w http.ResponseWriter, r *http.Request) {
+			events := webhookHandler.GetEventLog()
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"events": events,
+				"count":  len(events),
+			})
+		})
+
+		slog.Info("Stripe webhook endpoint registered", "path", "/api/stripe/webhook")
+	} else {
+		slog.Warn("Stripe webhook endpoint NOT registered - STRIPE_WEBHOOK_SECRET not set")
+	}
 
 	if a.RequiresAuth {
 		mux.HandleFunc("GET /login", a.handleLoginPageRequest)

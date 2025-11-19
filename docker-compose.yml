@@ -1,0 +1,110 @@
+# BusinessGlance - Production Docker Compose Configuration
+# For deploying BusinessGlance with all required services
+
+version: '3.8'
+
+services:
+  # BusinessGlance application
+  businessglance:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: businessglance
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount configuration file
+      - ./business-config.yml:/app/config/glance.yml:ro
+      # Optional: Mount custom assets
+      # - ./assets:/app/assets:ro
+    environment:
+      # Stripe Configuration (REQUIRED)
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+
+      # Encryption Key (REQUIRED for production)
+      - GLANCE_MASTER_KEY=${GLANCE_MASTER_KEY}
+
+      # Optional: Customer Acquisition Cost (manual override)
+      - BUSINESS_CAC=${BUSINESS_CAC:-}
+
+      # Optional: Logging level (debug, info, warn, error)
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - businessglance-network
+    labels:
+      - "com.businessglance.service=app"
+      - "com.businessglance.version=1.0.0"
+
+  # Optional: Nginx reverse proxy with SSL/TLS
+  # Uncomment if you want HTTPS support
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: businessglance-nginx
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./nginx/ssl:/etc/nginx/ssl:ro
+  #   depends_on:
+  #     - businessglance
+  #   networks:
+  #     - businessglance-network
+
+  # Optional: Prometheus for metrics collection
+  # Uncomment if you want monitoring
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: businessglance-prometheus
+  #   restart: unless-stopped
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  #     - prometheus-data:/prometheus
+  #   command:
+  #     - '--config.file=/etc/prometheus/prometheus.yml'
+  #     - '--storage.tsdb.path=/prometheus'
+  #     - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+  #     - '--web.console.templates=/usr/share/prometheus/consoles'
+  #   networks:
+  #     - businessglance-network
+
+  # Optional: Grafana for visualization
+  # Uncomment if you want dashboards
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: businessglance-grafana
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - grafana-data:/var/lib/grafana
+  #     - ./grafana/provisioning:/etc/grafana/provisioning:ro
+  #   environment:
+  #     - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+  #     - GF_USERS_ALLOW_SIGN_UP=false
+  #   depends_on:
+  #     - prometheus
+  #   networks:
+  #     - businessglance-network
+
+networks:
+  businessglance-network:
+    driver: bridge
+
+# Optional volumes for monitoring
+# volumes:
+#   prometheus-data:
+#     driver: local
+#   grafana-data:
+#     driver: local

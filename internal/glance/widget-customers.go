@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"html/template"
 	"log/slog"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/stripe/stripe-go/v81"
@@ -127,24 +129,66 @@ func (w *customersWidget) update(ctx context.Context) {
 		w.ChurnRate = (float64(w.ChurnedCustomers) / float64(w.TotalCustomers)) * 100
 	}
 
-	// Calculate LTV (simplified)
+	// Calculate LTV using actual MRR data
 	// LTV = Average MRR per customer / Monthly churn rate
-	// For MVP, we'll use a simplified calculation
-	// In production, you'd calculate this more accurately
 	if w.ActiveCustomers > 0 && w.ChurnRate > 0 {
-		// This is a simplified formula
-		// Real LTV should account for customer lifetime, margins, etc.
-		avgRevenuePerCustomer := 50.0 // Placeholder - should calculate from actual data
+		// Try to get current MRR from database first (most efficient)
+		var avgRevenuePerCustomer float64
+		if dbErr == nil {
+			revenueSnapshot, err := db.GetLatestRevenue(ctx, w.StripeMode)
+			if err == nil && revenueSnapshot != nil && revenueSnapshot.MRR > 0 {
+				// Use actual MRR data
+				avgRevenuePerCustomer = revenueSnapshot.MRR / float64(w.ActiveCustomers)
+				slog.Debug("Calculated LTV from database MRR",
+					"mrr", revenueSnapshot.MRR,
+					"active_customers", w.ActiveCustomers,
+					"avg_revenue", avgRevenuePerCustomer)
+			} else {
+				// Fallback: Calculate MRR directly from Stripe
+				currentMRR, err := w.calculateCurrentMRRWithRetry(ctx, client)
+				if err == nil && currentMRR > 0 {
+					avgRevenuePerCustomer = currentMRR / float64(w.ActiveCustomers)
+					slog.Debug("Calculated LTV from fresh MRR calculation",
+						"mrr", currentMRR,
+						"active_customers", w.ActiveCustomers,
+						"avg_revenue", avgRevenuePerCustomer)
+				} else {
+					// Ultimate fallback: use a conservative estimate
+					avgRevenuePerCustomer = 29.0 // Conservative default for SaaS
+					slog.Warn("Using default average revenue for LTV calculation - could not fetch MRR",
+						"default", avgRevenuePerCustomer,
+						"error", err)
+				}
+			}
+		} else {
+			// No database, calculate fresh
+			currentMRR, err := w.calculateCurrentMRRWithRetry(ctx, client)
+			if err == nil && currentMRR > 0 {
+				avgRevenuePerCustomer = currentMRR / float64(w.ActiveCustomers)
+			} else {
+				avgRevenuePerCustomer = 29.0 // Conservative default
+				slog.Warn("Using default average revenue for LTV calculation",
+					"default", avgRevenuePerCustomer)
+			}
+		}
+
 		monthlyChurnRate := w.ChurnRate / 100.0
 		if monthlyChurnRate > 0 {
 			w.LTV = avgRevenuePerCustomer / monthlyChurnRate
 		}
 	}
 
-	// CAC placeholder - this requires integration with ad spend data
-	// For MVP, we'll leave it as 0 or allow manual input
+	// CAC: Allow manual override via environment variable
 	// In production, integrate with Google Ads, Facebook Ads, etc.
-	w.CAC = 0 // TODO: Calculate from ad spend / new customers
+	cacEnv := os.Getenv("BUSINESS_CAC")
+	if cacEnv != "" {
+		// Parse CAC from environment variable
+		if cacValue, err := strconv.ParseFloat(cacEnv, 64); err == nil {
+			w.CAC = cacValue
+			slog.Debug("Using CAC from environment variable", "cac", cacValue)
+		}
+	}
+	// If no CAC set, leave it as 0 (will be displayed as N/A in UI)
 
 	// Calculate LTV/CAC ratio
 	if w.CAC > 0 {
@@ -340,6 +384,72 @@ func (w *customersWidget) getChurnedCustomersWithRetry(ctx context.Context, clie
 	err := client.ExecuteWithRetry(ctx, "getChurnedCustomers", func() error {
 		count, err := w.getChurnedCustomers(ctx)
 		result = count
+		return err
+	})
+	return result, err
+}
+
+// calculateCurrentMRR calculates the current MRR from active subscriptions
+// This is used for LTV calculation when database snapshot is not available
+func (w *customersWidget) calculateCurrentMRR(ctx context.Context) (float64, error) {
+	// Fetch all active subscriptions
+	params := &stripe.SubscriptionListParams{}
+	params.Status = stripe.String("active")
+	params.Context = ctx
+
+	totalMRR := 0.0
+	iter := subscription.List(params)
+
+	for iter.Next() {
+		sub := iter.Subscription()
+
+		// Calculate MRR for this subscription
+		for _, item := range sub.Items.Data {
+			if item.Price == nil {
+				continue
+			}
+
+			// Get the amount in dollars (Stripe uses cents)
+			amount := float64(item.Price.UnitAmount) / 100.0
+
+			// Normalize to monthly based on interval
+			interval := item.Price.Recurring.Interval
+			intervalCount := item.Price.Recurring.IntervalCount
+
+			var monthlyAmount float64
+			switch interval {
+			case "month":
+				monthlyAmount = amount / float64(intervalCount)
+			case "year":
+				monthlyAmount = amount / (12.0 * float64(intervalCount))
+			case "week":
+				monthlyAmount = amount * 4.33 / float64(intervalCount)
+			case "day":
+				monthlyAmount = amount * 30 / float64(intervalCount)
+			default:
+				slog.Warn("Unknown subscription interval", "interval", interval)
+				continue
+			}
+
+			// Multiply by quantity
+			monthlyAmount *= float64(item.Quantity)
+			totalMRR += monthlyAmount
+		}
+	}
+
+	if err := iter.Err(); err != nil {
+		return 0, fmt.Errorf("failed to list subscriptions for MRR: %w", err)
+	}
+
+	return totalMRR, nil
+}
+
+// calculateCurrentMRRWithRetry wraps calculateCurrentMRR with circuit breaker and retry logic
+func (w *customersWidget) calculateCurrentMRRWithRetry(ctx context.Context, client *StripeClientWrapper) (float64, error) {
+	var result float64
+	err := client.ExecuteWithRetry(ctx, "calculateCurrentMRR", func() error {
+		mrr, err := w.calculateCurrentMRR(ctx)
+		result = mrr
 		return err
 	})
 	return result, err

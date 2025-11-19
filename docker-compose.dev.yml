@@ -1,0 +1,44 @@
+# BusinessGlance - Development Docker Compose Configuration
+# For local development and testing
+
+version: '3.8'
+
+services:
+  businessglance:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: businessglance-dev
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount configuration file (allow hot reload)
+      - ./business-config.yml:/app/config/glance.yml:ro
+      # Optional: Mount custom assets
+      - ./assets:/app/assets:ro
+    environment:
+      # Stripe Configuration - TEST MODE
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_your_key_here}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+
+      # Encryption Key (optional in dev, will use default)
+      - GLANCE_MASTER_KEY=${GLANCE_MASTER_KEY:-dev-insecure-key-for-testing-only}
+
+      # Optional: Customer Acquisition Cost
+      - BUSINESS_CAC=${BUSINESS_CAC:-50}
+
+      # Development: Enable debug logging
+      - LOG_LEVEL=debug
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - businessglance-dev-network
+
+networks:
+  businessglance-dev-network:
+    driver: bridge

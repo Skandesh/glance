@@ -4,13 +4,75 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
 var buildVersion = "dev"
+
+// validateProductionEnvironment checks critical environment variables and configuration
+func validateProductionEnvironment() {
+	warnings := []string{}
+	errors := []string{}
+
+	// Check GLANCE_MASTER_KEY
+	masterKey := os.Getenv("GLANCE_MASTER_KEY")
+	if masterKey == "" {
+		warnings = append(warnings, "GLANCE_MASTER_KEY not set - using insecure default key. SET THIS IN PRODUCTION!")
+	} else if len(masterKey) < 32 {
+		warnings = append(warnings, fmt.Sprintf("GLANCE_MASTER_KEY is too short (%d chars). Recommended: 32+ characters", len(masterKey)))
+	}
+
+	// Check if Stripe keys are configured
+	stripeKey := os.Getenv("STRIPE_SECRET_KEY")
+	if stripeKey != "" {
+		// Validate Stripe key format
+		if !strings.HasPrefix(stripeKey, "sk_") {
+			errors = append(errors, "STRIPE_SECRET_KEY must start with 'sk_' prefix")
+		}
+
+		// Check if using test mode in what appears to be production
+		if strings.HasPrefix(stripeKey, "sk_test_") {
+			warnings = append(warnings, "Using Stripe TEST mode key. Switch to 'sk_live_' for production")
+		} else if strings.HasPrefix(stripeKey, "sk_live_") {
+			slog.Info("Stripe LIVE mode detected - production configuration")
+		}
+	}
+
+	// Check webhook secret
+	webhookSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
+	if stripeKey != "" && webhookSecret == "" {
+		warnings = append(warnings, "STRIPE_WEBHOOK_SECRET not set - real-time updates will NOT work")
+	}
+
+	// Print errors (fatal)
+	if len(errors) > 0 {
+		fmt.Println("\n❌ CRITICAL CONFIGURATION ERRORS:")
+		for _, err := range errors {
+			fmt.Printf("  - %s\n", err)
+		}
+		fmt.Println("\nFix these errors before starting the application.")
+		os.Exit(1)
+	}
+
+	// Print warnings (non-fatal but important)
+	if len(warnings) > 0 {
+		fmt.Println("\n⚠️  CONFIGURATION WARNINGS:")
+		for _, warning := range warnings {
+			fmt.Printf("  - %s\n", warning)
+		}
+		fmt.Println()
+	}
+
+	// Production readiness check
+	if masterKey != "" && len(masterKey) >= 32 && strings.HasPrefix(stripeKey, "sk_live_") && webhookSecret != "" {
+		slog.Info("✅ Production environment validation passed")
+	}
+}
 
 func Main() int {
 	options, err := parseCliOptions()
@@ -91,6 +153,9 @@ func Main() int {
 }
 
 func serveApp(configPath string) error {
+	// Validate production environment before starting
+	validateProductionEnvironment()
+
 	// TODO: refactor if this gets any more complex, the current implementation is
 	// difficult to reason about due to all of the callbacks and simultaneous operations,
 	// use a single goroutine and a channel to initiate synchronous changes to the server

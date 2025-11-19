@@ -1,0 +1,105 @@
+{{ template "widget-base.html" . }}
+
+{{- define "widget-content" }}
+<div class="business-metric-widget">
+    {{- if gt .TotalCustomers 0 }}
+    <!-- Primary Metric -->
+    <div class="metric-primary">
+        <div class="metric-value">{{ formatNumber .TotalCustomers }}</div>
+        <div class="metric-label">Total Customers</div>
+    </div>
+
+    <!-- This Month Stats -->
+    <div class="metrics-grid margin-top-10">
+        {{- if gt .NewCustomers 0 }}
+        <div class="metric-item">
+            <div class="metric-item-label size-h5">NEW</div>
+            <div class="metric-item-value color-positive text-very-compact">
+                +{{ formatNumber .NewCustomers }}
+            </div>
+        </div>
+        {{- end }}
+
+        {{- if gt .ChurnedCustomers 0 }}
+        <div class="metric-item">
+            <div class="metric-item-label size-h5">CHURNED</div>
+            <div class="metric-item-value color-negative text-very-compact">
+                -{{ formatNumber .ChurnedCustomers }}
+            </div>
+        </div>
+        {{- end }}
+
+        {{- if gt .ChurnRate 0 }}
+        <div class="metric-item">
+            <div class="metric-item-label size-h5">CHURN RATE</div>
+            <div class="metric-item-value {{ if lt .ChurnRate 5 }}color-positive{{ else if lt .ChurnRate 10 }}color-base{{ else }}color-negative{{ end }} text-very-compact">
+                {{ formatPrice .ChurnRate }}%
+            </div>
+        </div>
+        {{- end }}
+
+        {{- if gt .ActiveCustomers 0 }}
+        <div class="metric-item">
+            <div class="metric-item-label size-h5">ACTIVE</div>
+            <div class="metric-item-value color-highlight text-very-compact">
+                {{ formatNumber .ActiveCustomers }}
+            </div>
+        </div>
+        {{- end }}
+    </div>
+
+    <!-- LTV/CAC Metrics (if available) -->
+    {{- if or (gt .LTV 0) (gt .CAC 0) }}
+    <div class="metrics-grid margin-top-10">
+        {{- if gt .LTV 0 }}
+        <div class="metric-item">
+            <div class="metric-item-label size-h5">LTV</div>
+            <div class="metric-item-value color-highlight text-very-compact">
+                ${{ formatPrice .LTV }}
+            </div>
+        </div>
+        {{- end }}
+
+        {{- if gt .CAC 0 }}
+        <div class="metric-item">
+            <div class="metric-item-label size-h5">CAC</div>
+            <div class="metric-item-value color-highlight text-very-compact">
+                ${{ formatPrice .CAC }}
+            </div>
+        </div>
+        {{- end }}
+
+        {{- if gt .LTVtoCAC 0 }}
+        <div class="metric-item">
+            <div class="metric-item-label size-h5">LTV/CAC</div>
+            <div class="metric-item-value {{ if gt .LTVtoCAC 3 }}color-positive{{ else }}color-base{{ end }} text-very-compact">
+                {{ formatPrice .LTVtoCAC }}x
+            </div>
+        </div>
+        {{- end }}
+    </div>
+    {{- end }}
+
+    <!-- Trend Chart -->
+    {{- if and .TrendLabels .TrendValues }}
+    <div class="chart-container margin-top-10">
+        <canvas id="customers-trend-chart"
+                class="chart-canvas"
+                width="600"
+                height="200"
+                data-chart-type="trend"
+                data-labels='{{ toJSON .TrendLabels }}'
+                data-values='{{ toJSON .TrendValues }}'
+                data-color="#3b82f6">
+        </canvas>
+    </div>
+    {{- end }}
+
+    {{- else }}
+    <div class="widget-notice">
+        <p class="size-h4">No Customer Data</p>
+        <p class="color-paragraph">No customers found. Make sure your Stripe API key is correct.</p>
+    </div>
+    {{- end }}
+</div>
+{{- end }}
